@@ -1,0 +1,33 @@
+# THE IMPORTANT ONE
+#
+# node_modules on this machine contains Windows-only native binaries:
+#   @rolldown/binding-win32-x64-msvc
+#   @tailwindcss/oxide-win32-x64-msvc
+#   lightningcss-win32-x64-msvc
+#
+# Copying those into a Linux image either fails the build outright or - worse -
+# leaves npm believing the tree is already installed, so it never fetches the
+# linux-x64 equivalents and the build breaks somewhere much less obvious.
+#
+# The image runs its own `npm install`. Nothing from here is wanted.
+node_modules/
+
+dist/
+build/
+
+# Local dev config. VITE_API_TARGET points the DEV SERVER proxy at a backend on
+# the host; inside the container nginx does the proxying and this would only
+# confuse whoever reads it next.
+.env
+.env.local
+.env.*.local
+
+.git/
+.gitignore
+.vscode/
+.idea/
+
+Dockerfile
+.dockerignore
+README.md
+AGENTS.md

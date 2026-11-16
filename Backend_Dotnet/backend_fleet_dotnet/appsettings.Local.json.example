@@ -1,0 +1,46 @@
+{
+  "_comment": [
+    "Copy this file to appsettings.Local.json and fill in the real values.",
+    "appsettings.Local.json is git-ignored; this .example file is not.",
+    "It is layered on top of appsettings.json by Program.cs, so anything set",
+    "here wins. This is the .NET twin of the Java backend's",
+    "application-local.properties - use the SAME values in both."
+  ],
+
+  "ConnectionStrings": {
+    "FleetDatabase": "server=localhost;port=3306;database=fleetmanagement;user=root;password=YOUR_MYSQL_PASSWORD;TreatTinyAsBoolean=true"
+  },
+
+  "Jwt": {
+    "_comment": "Must equal the Java backend's jwt.secret, or tokens issued by one are rejected by the other.",
+    "Secret": "SAME_SECRET_AS_THE_JAVA_BACKEND"
+  },
+
+  "Email": {
+    "_comment": [
+      "The same mailbox as the Java backend's spring.mail.username /",
+      "spring.mail.password. For Gmail the password is an APP PASSWORD",
+      "(Google Account -> Security -> 2-Step Verification -> App passwords),",
+      "not the account password - Google stopped accepting that for SMTP.",
+      "Leave these out and e-mail is simply switched off; bookings and",
+      "returns carry on working."
+    ],
+    "Username": "your.mailbox@gmail.com",
+    "Password": "YOUR_16_CHARACTER_APP_PASSWORD"
+  },
+
+  "Authentication": {
+    "Google": {
+        "_comment": [
+            "From https://console.cloud.google.com -> APIs & Services -> Credentials.",
+            "You can reuse the SAME OAuth client as the Java backend. Add a second",
+            "Authorised redirect URI to it, exactly:",
+            "    http://localhost:5100/login/oauth2/code/google",
+            "Google matches redirect URIs as strings - a trailing slash or https",
+            "instead of http is a mismatch."
+        ],
+        "ClientId": "YOUR_GOOGLE_CLIENT_ID",
+"ClientSecret": "YOUR_GOOGLE_CLIENT_SECRET"
+    }
+  }
+}

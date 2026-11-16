@@ -1,0 +1,30 @@
+# Everything here is either rebuilt inside the image or must never enter it.
+
+target/
+.mvn/
+mvnw
+mvnw.cmd
+
+# THE IMPORTANT ONE
+#
+# application-local.properties holds the MySQL password, the Gmail app password
+# and the Google client secret. It lives in src/main/resources, so `mvn package`
+# bundles it INTO the jar - anyone with the image can unzip it back out.
+#
+# Excluded here so the image is built without it. Every one of those values is
+# supplied as an environment variable by docker-compose instead, which is the
+# only way they stay out of the layers.
+src/main/resources/application-local.properties
+
+.git/
+.gitignore
+.idea/
+.vscode/
+.settings/
+.classpath
+.project
+*.iml
+
+Dockerfile
+.dockerignore
+README.md

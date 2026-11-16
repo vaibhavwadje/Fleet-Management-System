@@ -1,0 +1,13 @@
+# Build output
+bin/
+obj/
+[Ll]ogs/
+
+# Local configuration - contains the MySQL password, the JWT secret and the
+# Google client secret. The .example file next to it is what gets committed.
+appsettings.Local.json
+
+# IDE
+.vs/
+*.user
+*.suo

@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Make a Reservation – FLEMAN</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: #f4f7fc;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.card {
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow: 0 12px 40px rgba(11,43,74,0.08);
+  max-width: 980px;
+  width: 100%;
+  padding: 40px 44px;
+}
+.card h1 {
+  font-size: 28px;
+  font-weight: 800;
+  color: #0b2b4a;
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+}
+.card > p {
+  font-size: 15px;
+  color: #7a8ea5;
+  margin-bottom: 28px;
+}
+.form-row { margin-bottom: 20px; }
+.form-row:last-of-type { margin-bottom: 24px; }
+.form-label {
+  display: block;
+  text-transform: uppercase;
+  font-weight: 600;
+  font-size: 13px;
+  color: #4c688b;
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+}
+.input-group {
+  display: flex;
+  gap: 10px;
+}
+.input-group .field-wrap { flex: 1; min-width: 0; }
+input[type="text"],
+input[type="date"],
+input[type="time"] {
+  width: 100%;
+  border: 1px solid #d7e0ea;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-family: inherit;
+  color: #1e2f44;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  min-height: 44px;
+}
+input[type="text"]:focus,
+input[type="date"]:focus,
+input[type="time"]:focus {
+  border-color: #0b2b4a;
+  box-shadow: 0 0 0 3px rgba(11,43,74,0.08);
+}
+.field-wrap {
+  position: relative;
+}
+.field-wrap i {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #a0b4cb;
+  font-size: 14px;
+  pointer-events: none;
+  z-index: 1;
+}
+input[type="date"] { min-height: 44px; }
+input[type="time"] { min-height: 44px; }
+
+/* ── Tabs ── */
+.tab-group {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.tab-btn {
+  background: #f0f4fa;
+  color: #4c688b;
+  border: none;
+  border-radius: 30px;
+  padding: 6px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.tab-btn.active {
+  background: #0b2b4a;
+  color: #fff;
+}
+.input-group-wrap {
+  display: flex;
+  gap: 10px;
+}
+.input-group-wrap .search-wrapper { flex: 1; min-width: 0; }
+
+/* ── OR separator ── */
+.or-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a0b4cb;
+  text-transform: uppercase;
+}
+.or-divider::before,
+.or-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e6edf5;
+}
+
+/* ── Search wrapper & dropdown ── */
+.search-wrapper {
+  position: relative;
+}
+.suggestions-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #d7e0ea;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  margin-top: 4px;
+  display: none;
+}
+.suggestions-dropdown.visible { display: block; }
+.suggestion-item {
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 14px;
+  color: #1e2f44;
+  border-bottom: 1px solid #f0f4fa;
+}
+.suggestion-item:last-child { border-bottom: none; }
+.suggestion-item:hover { background: #f0f4fa; }
+.suggestion-item .code-highlight { font-weight: 600; color: #0b2b4a; }
+.no-results, .error-msg {
+  padding: 12px 16px;
+  color: #8a9bb0;
+  font-size: 14px;
+  font-style: italic;
+}
+
+/* ── Checkbox ── */
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.checkbox-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #0b2b4a;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.checkbox-row label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1e2f44;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* ── Return location wrapper ── */
+#return-location-wrapper { display: none; }
+#return-location-wrapper.visible { display: block; }
+
+/* ── Action row ── */
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.btn-primary {
+  background: #0b2b4a;
+  color: #fff;
+  border: none;
+  border-radius: 60px;
+  padding: 14px 44px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.btn-primary:hover { background: #143e63; }
+.btn-secondary {
+  border: 1.5px solid #b6c8db;
+  background: transparent;
+  border-radius: 60px;
+  padding: 14px 32px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #4c688b;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.btn-secondary:hover { border-color: #0b2b4a; color: #0b2b4a; }
+.staff-link {
+  margin-left: auto;
+  font-size: 14px;
+  color: #4c688b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.staff-link a {
+  color: #0b2b4a;
+  font-weight: 600;
+  text-decoration: none;
+}
+.staff-link a:hover { text-decoration: underline; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  body { padding: 16px; align-items: flex-start; padding-top: 24px; }
+  .card { padding: 24px 20px; }
+  .card h1 { font-size: 24px; }
+  .input-group { flex-direction: column; }
+  .input-group-wrap { flex-direction: column; }
+  .action-row { flex-direction: column; }
+  .action-row .btn-primary,
+  .action-row .btn-secondary { width: 100%; text-align: center; }
+  .staff-link { margin-left: 0; }
+  .tab-group { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>Make a Reservation</h1>
+  <p>Find and book your perfect vehicle</p>
+
+  <!-- Row 1 – Rental Date & Time -->
+  <div class="form-row">
+    <span class="form-label">Rental Date &amp; Time</span>
+    <div class="input-group">
+      <div class="field-wrap">
+        <i class="fas fa-calendar-alt"></i>
+        <input type="date" id="rental-date" style="padding-left:38px;">
+      </div>
+      <div class="field-wrap">
+        <i class="fas fa-clock"></i>
+        <input type="time" id="rental-time" style="padding-left:38px;" value="10:00">
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2 – Return Date & Time -->
+  <div class="form-row">
+    <span class="form-label">Return Date &amp; Time</span>
+    <div class="input-group">
+      <div class="field-wrap">
+        <i class="fas fa-calendar-alt"></i>
+        <input type="date" id="return-date" style="padding-left:38px;">
+      </div>
+      <div class="field-wrap">
+        <i class="fas fa-clock"></i>
+        <input type="time" id="return-time" style="padding-left:38px;" value="10:00">
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 3 – Pick-Up Location -->
+  <div class="form-row">
+    <span class="form-label">Pick-Up Location</span>
+    <div class="tab-group" id="pickup-tabs">
+      <button class="tab-btn active" data-mode="airport">Airport Code</button>
+      <button class="tab-btn" data-mode="state">State / City</button>
+    </div>
+
+    <!-- Airport mode -->
+    <div id="pickup-airport-group" style="display:flex;flex-direction:column;gap:10px;">
+      <div class="search-wrapper">
+        <i class="fas fa-map-pin" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#a0b4cb;font-size:14px;pointer-events:none;z-index:1;"></i>
+        <input type="text" id="pickup-airport" placeholder="Enter Airport Code" style="padding-left:38px;" autocomplete="off">
+      </div>
+    </div>
+
+    <!-- State / City mode -->
+    <div id="pickup-state-group" style="display:none;flex-direction:column;gap:10px;">
+      <div class="or-divider">OR</div>
+      <div class="input-group-wrap">
+        <div class="search-wrapper">
+          <input type="text" id="pickup-state" placeholder="Select State" autocomplete="off">
+        </div>
+        <div class="search-wrapper">
+          <input type="text" id="pickup-city" placeholder="Enter City" autocomplete="off">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 4 – Different Return Location checkbox -->
+  <div class="checkbox-row">
+    <input type="checkbox" id="diff-return-checkbox">
+    <label for="diff-return-checkbox">I may return the car to a different location</label>
+  </div>
+
+  <!-- Row 5 – Return Location (conditional) -->
+  <div id="return-location-wrapper">
+    <div class="form-row">
+      <span class="form-label">Return Location</span>
+      <div class="tab-group" id="return-tabs">
+        <button class="tab-btn active" data-mode="airport">Airport Code</button>
+        <button class="tab-btn" data-mode="state">State / City</button>
+      </div>
+
+      <!-- Airport mode -->
+      <div id="return-airport-group" style="display:flex;flex-direction:column;gap:10px;">
+        <div class="search-wrapper">
+          <i class="fas fa-map-pin" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#a0b4cb;font-size:14px;pointer-events:none;z-index:1;"></i>
+          <input type="text" id="return-airport" placeholder="Enter Airport Code" style="padding-left:38px;" autocomplete="off">
+        </div>
+      </div>
+
+      <!-- State / City mode -->
+      <div id="return-state-group" style="display:none;flex-direction:column;gap:10px;">
+        <div class="or-divider">OR</div>
+        <div class="input-group-wrap">
+          <div class="search-wrapper">
+            <input type="text" id="return-state" placeholder="Select State" autocomplete="off">
+          </div>
+          <div class="search-wrapper">
+            <input type="text" id="return-city" placeholder="Enter City" autocomplete="off">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 6 – Action Buttons & Staff Link -->
+  <div class="action-row">
+    <button class="btn-primary">Continue Booking <i class="fas fa-chevron-right" style="margin-left:8px;font-size:12px;"></i></button>
+    <button class="btn-secondary"><i class="fas fa-edit" style="margin-right:8px;"></i>Modify / Cancel Booking</button>
+    <span class="staff-link">
+      <i class="fas fa-user-tie"></i> Staff: <a href="#">Cancellation</a>
+    </span>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  /* ── Default dates ── */
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  document.getElementById('rental-date').value = `${yyyy}-${mm}-${dd}`;
+
+  const future = new Date(today);
+  future.setDate(future.getDate() + 5);
+  const fyy = future.getFullYear();
+  const fmm = String(future.getMonth() + 1).padStart(2, '0');
+  const fdd = String(future.getDate()).padStart(2, '0');
+  document.getElementById('return-date').value = `${fyy}-${fmm}-${fdd}`;
+
+  /* ── Tab switching – Pickup ── */
+  document.querySelectorAll('#pickup-tabs button').forEach(btn => {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('#pickup-tabs button').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      const mode = this.dataset.mode;
+      document.getElementById('pickup-airport-group').style.display = mode === 'airport' ? 'flex' : 'none';
+      document.getElementById('pickup-state-group').style.display = mode === 'state' ? 'flex' : 'none';
+    });
+  });
+
+  /* ── Tab switching – Return ── */
+  document.querySelectorAll('#return-tabs button').forEach(btn => {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('#return-tabs button').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      const mode = this.dataset.mode;
+      document.getElementById('return-airport-group').style.display = mode === 'airport' ? 'flex' : 'none';
+      document.getElementById('return-state-group').style.display = mode === 'state' ? 'flex' : 'none';
+    });
+  });
+
+  /* ── Checkbox toggle ── */
+  document.getElementById('diff-return-checkbox').addEventListener('change', function() {
+    const el = document.getElementById('return-location-wrapper');
+    el.style.display = this.checked ? 'block' : 'none';
+  });
+
+  /* ── Dynamic Search Helper ── */
+  function setupDynamicSearch(inputId, endpoint, displayField, valueField) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const wrapper = input.closest('.search-wrapper');
+    let timeoutId;
+    let controller;
+
+    const suggestionsContainer = document.createElement('div');
+    suggestionsContainer.className = 'suggestions-dropdown';
+    wrapper.appendChild(suggestionsContainer);
+
+    input.addEventListener('input', function() {
+      clearTimeout(timeoutId);
+      if (controller) controller.abort();
+
+      const query = this.value.trim();
+      if (query.length < 1) {
+        suggestionsContainer.classList.remove('visible');
+        return;
+      }
+
+      timeoutId = setTimeout(() => {
+        controller = new AbortController();
+        fetch(`${endpoint}?query=${encodeURIComponent(query)}`, {
+          signal: controller.signal
+        })
+        .then(res => {
+          if (!res.ok) throw new Error('Network response was not ok');
+          return res.json();
+        })
+        .then(raw => {
+          const list = raw && !Array.isArray(raw) && raw.data ? raw.data : raw;
+          if (!list || list.length === 0) {
+            suggestionsContainer.innerHTML = '<div class="no-results">No results found</div>';
+            suggestionsContainer.classList.add('visible');
+            return;
+          }
+          const mapped = list.map(item => ({
+            code: item.airportCode || item.stateName || item.cityName || item.code || '',
+            name: item.airportName || item.stateName || item.cityName || item.name || ''
+          }));
+          suggestionsContainer.innerHTML = mapped.map(item =>
+            `<div class="suggestion-item" data-value="${item[valueField]}" data-label="${item[displayField]}">
+              ${item.code ? `<span class="code-highlight">${item.code}</span> \u2013 ${item[displayField]}` : item[displayField]}
+            </div>`
+          ).join('');
+          suggestionsContainer.classList.add('visible');
+
+          suggestionsContainer.querySelectorAll('.suggestion-item').forEach(item => {
+            item.addEventListener('click', function() {
+              input.value = this.dataset.value;
+              suggestionsContainer.classList.remove('visible');
+              input.dispatchEvent(new Event('change'));
+            });
+          });
+        })
+        .catch(err => {
+          if (err.name === 'AbortError') return;
+          suggestionsContainer.innerHTML = '<div class="error-msg">Failed to load suggestions</div>';
+          suggestionsContainer.classList.add('visible');
+        });
+      }, 300);
+    });
+
+    input.addEventListener('blur', function() {
+      setTimeout(() => {
+        suggestionsContainer.classList.remove('visible');
+      }, 200);
+    });
+
+    input.addEventListener('focus', function() {
+      if (this.value.trim().length > 0 && suggestionsContainer.children.length > 0) {
+        suggestionsContainer.classList.add('visible');
+      }
+    });
+  }
+
+  /* ── Initialize all dynamic searches ── */
+  setupDynamicSearch('pickup-airport', '/api/airports/search', 'name', 'code');
+  setupDynamicSearch('pickup-state', '/api/states/search', 'name', 'name');
+  setupDynamicSearch('pickup-city', '/api/cities/search', 'name', 'name');
+  setupDynamicSearch('return-airport', '/api/airports/search', 'name', 'code');
+  setupDynamicSearch('return-state', '/api/states/search', 'name', 'name');
+  setupDynamicSearch('return-city', '/api/cities/search', 'name', 'name');
+})();
+</script>
+</body>
+</html>

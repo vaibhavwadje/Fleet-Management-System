@@ -1,0 +1,29 @@
+# Build output. Copying a Windows-built bin/ or obj/ into a Linux image makes
+# `dotnet restore` believe it is already done and the publish then fails on
+# assets that were resolved for the wrong runtime identifier.
+bin/
+obj/
+
+Logs/
+
+# THE IMPORTANT ONE
+#
+# appsettings.Local.json holds the MySQL password, the JWT secret, the Google
+# client secret and the SMTP app password. It must not enter an image layer -
+# layers are readable by anyone who can pull the image, and deleting a file in
+# a later layer does not remove it from an earlier one.
+#
+# docker-compose supplies all of these as environment variables instead.
+appsettings.Local.json
+
+.git/
+.gitignore
+.vs/
+.vscode/
+.idea/
+*.user
+
+Dockerfile
+.dockerignore
+README.md
+*.http

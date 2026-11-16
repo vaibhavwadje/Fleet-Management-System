@@ -1,0 +1,322 @@
+# ═════════════════════════════════════════════════════════════════════════════
+#  FLEMAN - one stack, either backend.
+#
+#      docker compose --profile java   up --build
+#      docker compose --profile dotnet up --build
+#
+#  MySQL and the frontend are defined once and shared. Only the backend
+#  service differs, which is the whole point: the two backends are supposed to
+#  be interchangeable, and a setup that describes them twice would let them
+#  quietly stop being so.
+#
+#  The frontend can be shared because nothing in the React bundle knows a
+#  backend address - every call is a relative /api/... resolved by nginx at
+#  runtime from BACKEND_ORIGIN. Switching backends is a restart, not a rebuild.
+#
+#  Build contexts point at the real source folders (../..). Nothing is copied
+#  into this directory, so an image can never be built from a stale artifact.
+# ═════════════════════════════════════════════════════════════════════════════
+
+name: fleman
+
+services:
+
+  # ── MySQL ──────────────────────────────────────────────────────────────────
+  mysqldb:
+    image: mysql:8.0
+    # Pinned, not :latest. A rebuild six months from now should produce the
+    # same database, and :latest crossing a major version is how a stack that
+    # worked yesterday stops starting today.
+    restart: unless-stopped
+    ports:
+      # 3307 on the host so this cannot collide with a MySQL already installed
+      # on the machine. Inside the network it is still the normal 3306.
+      - "${MYSQL_HOST_PORT:-3307}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-}
+      # Same zone as the two backends, so NOW() and the created_at/updated_at
+      # defaults agree with the dates the applications compute.
+      TZ: ${TZ:-Asia/Kolkata}
+    volumes:
+      # THE LINE THAT WAS MISSING.
+      #
+      # Without a named volume the database lives in the container's writable
+      # layer, so `docker compose down` deletes every booking, invoice and
+      # staff account. `down -v` is the deliberate way to wipe it.
+      - mysql-data:/var/lib/mysql
+      - ./database/fleetmanagement.sql:/docker-entrypoint-initdb.d/01-fleetmanagement.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      # MySQL takes a while to initialise an empty volume, and without this the
+      # first few probes count as failures against the retry budget.
+      start_period: 40s
+    networks: [fleman]
+
+  # ── Java Spring Boot backend ───────────────────────────────────────────────
+  #
+  # IN BOTH PROFILES, and it has to be.
+  #
+  # The .NET port deliberately does not re-implement invoice PDFs (OpenPDF) or
+  # the Excel rate-card importer (Apache POI) - it calls this service for them.
+  # Modelling the two backends as alternatives was wrong: .NET is not a
+  # replacement for this container, it replaces the DATA AND RULES half of it
+  # and still needs the document half.
+  #
+  # With this only in the java profile, `--profile dotnet` started a .NET
+  # service pointing JavaMicroservice__BaseUrl at a host that did not exist,
+  # and every one of these 404'd or hung:
+  #     GET  /api/invoices/booking/{id}/download
+  #     GET  /api/staff/invoices/{id}/download
+  #     POST /api/staff/excel/car-types
+  #     GET  /api/staff/excel/car-types/template
+  #     GET  /api/proxy/health
+  #
+  # It is also what creates the schema, so having it in both profiles removes
+  # the "start java once first" foot-gun as a side effect.
+  server:
+    profiles: ["java"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${JAVA_HOST_PORT:-8080}:8080"
+    depends_on:
+      mysqldb:
+        condition: service_healthy
+    environment:
+      # ── The container clock ──────────────────────────────────────────
+      #
+      # Alpine and the .NET/JRE base images run in UTC. This application does
+      # its date arithmetic in LOCAL time - DateTime.Today, LocalDate.now() -
+      # and the business it models is in IST, which is UTC+5:30.
+      #
+      # Left as UTC, between 00:00 and 05:30 IST the container believes it is
+      # still YESTERDAY, and all day every timestamp is 5.5 hours behind. That
+      # reaches the money: the hand-over date is what billing starts from, so
+      # a day's error there is a day's rental charged or not charged.
+      #
+      # Requires the tzdata package, which the Dockerfiles install - without
+      # it Alpine ignores TZ entirely and stays on UTC with no warning.
+      TZ: ${TZ:-Asia/Kolkata}
+
+      # Hibernate owns the schema. On a fresh volume this is what creates every
+      # table, so the Java service must run at least once before .NET is useful.
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysqldb:3306/${MYSQL_DATABASE:-}?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Kolkata
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-}
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: com.mysql.cj.jdbc.Driver
+
+      # application-local.properties is excluded by .dockerignore, so every
+      # value it used to carry arrives here instead - out of the image layers
+      # and out of the jar.
+      #
+      # The profile is still 'local'; Spring simply finds no file for it and
+      # these environment variables win either way.
+      SPRING_PROFILES_ACTIVE: local
+
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-}
+
+      SPRING_MAIL_HOST: ${MAIL_HOST:-}
+      SPRING_MAIL_PORT: ${MAIL_PORT:-}
+      SPRING_MAIL_USERNAME: ${MAIL_USERNAME:-}
+      SPRING_MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "true"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
+
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_SCOPE: email,profile
+
+      # Pinned, not derived.
+      #
+      # Left to itself Spring builds this from the request - which behind a
+      # proxy means from the X-Forwarded-* headers, and one wrong header
+      # produces a redirect_uri that differs from the registered one by a port
+      # number. Google's answer to that is redirect_uri_mismatch, an error
+      # that says nothing about proxies and sends you to the console to
+      # re-check a URI that was already correct.
+      #
+      # Stating it removes the whole class of problem: this value and the one
+      # in the Google console are now the same literal string. The .NET service
+      # has always pinned its callback for the same reason.
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_REDIRECT_URI: ${PUBLIC_ORIGIN:-http://localhost:5174}/login/oauth2/code/google
+
+      # Where the browser is sent once Google sign-in succeeds. The nginx
+      # origin, not the backend's - the backend is not reachable from a browser.
+      APP_OAUTH2_REDIRECT_URI: ${PUBLIC_ORIGIN:-http://localhost:5174}/oauth-success
+
+      # Makes Spring trust nginx's X-Forwarded-* headers when it builds the
+      # OAuth redirect_uri. Without it Spring advertises http://server:8080/...,
+      # an address that exists only inside this network, and Google answers
+      # redirect_uri_mismatch.
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      # Spring Boot plus Hibernate schema creation is not quick on first run.
+      start_period: 90s
+    networks: [fleman]
+
+  # ── .NET ASP.NET Core backend ──────────────────────────────────────────────
+  server-dotnet:
+    profiles: ["dotnet"]
+    build:
+      context: ./Backend_Dotnet/backend_fleet_dotnet
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      # 5100 on the host to match the documented convention; 8080 inside,
+      # matching the Java service so nginx points at the same port either way.
+      - "${DOTNET_HOST_PORT:-5100}:8080"
+    depends_on:
+      mysqldb:
+        condition: service_healthy
+      #server:
+        # Not optional. This service calls the Java one for invoice PDFs and
+        # the Excel importer, so starting before it is up means the first
+        # download of the session fails for no reason the user can see.
+        #condition: service_healthy
+    environment:
+      # ── The container clock ──────────────────────────────────────────
+      #
+      # Alpine and the .NET/JRE base images run in UTC. This application does
+      # its date arithmetic in LOCAL time - DateTime.Today, LocalDate.now() -
+      # and the business it models is in IST, which is UTC+5:30.
+      #
+      # Left as UTC, between 00:00 and 05:30 IST the container believes it is
+      # still YESTERDAY, and all day every timestamp is 5.5 hours behind. That
+      # reaches the money: the hand-over date is what billing starts from, so
+      # a day's error there is a day's rental charged or not charged.
+      #
+      # Requires the tzdata package, which the Dockerfiles install - without
+      # it Alpine ignores TZ entirely and stays on UTC with no warning.
+      TZ: ${TZ:-Asia/Kolkata}
+      DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "false"
+
+      # __ is .NET's separator for nested configuration keys, so
+      # ConnectionStrings__FleetDatabase overrides ConnectionStrings:FleetDatabase.
+      ConnectionStrings__FleetDatabase: server=mysqldb;port=3306;database=${MYSQL_DATABASE:-};user=root;password=${MYSQL_ROOT_PASSWORD:-};TreatTinyAsBoolean=true
+
+      # MUST be the same value the Java service uses. Both sign with it, so a
+      # token issued by either is accepted by both - which is what lets you
+      # switch profiles without everyone logging in again.
+      Jwt__Secret: ${JWT_SECRET}
+
+      # This service does NOT create tables. Hibernate owns the schema; EF Core
+      # maps onto what it produced. On a fresh volume, start the java profile
+      # once before this one or there will be nothing to map onto.
+      JavaMicroservice__BaseUrl: http://server:8080
+
+      Email__Host: ${MAIL_HOST:-}
+      Email__Port: ${MAIL_PORT:-}
+      Email__Username: ${MAIL_USERNAME:-}
+      Email__Password: ${MAIL_PASSWORD:-}
+
+      Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
+      Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
+      # The public origin, for the same reason as the Java service: Google
+      # redirects a BROWSER here, and the browser cannot resolve container names.
+      Authentication__Google__CallbackUrl: ${PUBLIC_ORIGIN:-http://localhost:5174}/login/oauth2/code/google
+      Authentication__Google__FrontendRedirectUri: ${PUBLIC_ORIGIN:-http://localhost:5174}/oauth-success
+
+      # Same origin the browser uses, so a token minted here is accepted by
+      # nginx and by the app.
+      Cors__Origins__0: ${PUBLIC_ORIGIN:-http://localhost:5174}
+    volumes:
+      # ASP.NET Data Protection keys.
+      #
+      # These encrypt the OAuth correlation cookie. Left in the container's
+      # writable layer - which is what the "may not be persisted" warning at
+      # start-up is telling you - they are regenerated on every recreate, and
+      # a sign-in that was in flight across a restart fails with "correlation
+      # failed": an error that points at Google rather than at a lost key.
+      - dotnet-dataprotection:/home/fleman/.aspnet/DataProtection-Keys
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+    networks: [fleman]
+
+  # ── React frontend, behind nginx ───────────────────────────────────────────
+  #
+  # TWO SERVICES, ONE IMAGE.
+  #
+  # Both build the same context and both are tagged fleman-frontend:local, so
+  # the bundle is compiled once and the second is a cache hit. They differ only
+  # in BACKEND_ORIGIN, which nginx reads at start-up.
+  #
+  # Split by profile on purpose. A single shared service would mean the profile
+  # chose the backend but a separate .env line chose what the frontend talks
+  # to, and nothing would stop those two disagreeing - you would get a running
+  # stack where every API call went to a container that was not up. This way
+  # the profile is the only switch there is.
+  frontend:
+    profiles: ["java"]
+    image: fleman-frontend:local
+    build:
+      context: ./fleman-frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_HOST_PORT:-5174}:80"
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      BACKEND_ORIGIN: http://server:8080
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/nginx-health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [fleman]
+
+  frontend-dotnet:
+    profiles: ["dotnet"]
+    image: fleman-frontend:local
+    build:
+      context: ./fleman-frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      # Same host port. Only one profile runs at a time, so they cannot clash -
+      # and the app is at the same URL either way, which matters because that
+      # URL is registered in the Google console.
+      - "${FRONTEND_HOST_PORT:-5174}:80"
+    depends_on:
+      server-dotnet:
+        condition: service_healthy
+    environment:
+      BACKEND_ORIGIN: http://server-dotnet:8080
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/nginx-health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [fleman]
+
+volumes:
+  mysql-data:
+    # Named, so it survives `docker compose down` and is shared by both
+    # profiles - a booking made under java is visible under dotnet, which is
+    # the parity check worth having.
+
+  dotnet-dataprotection:
+    # Keeps the OAuth cookie keys across container recreates. See the note on
+    # the server-dotnet service.
+
+networks:
+  fleman:
+    driver: bridge

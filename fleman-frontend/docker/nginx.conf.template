@@ -1,0 +1,101 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  FLEMAN frontend - static SPA plus API proxy, on one origin.
+#
+#  This file is a TEMPLATE. The nginx image's entrypoint runs envsubst over
+#  /etc/nginx/templates/*.template at start-up, so ${BACKEND_ORIGIN} is filled
+#  in from the environment. That single variable is what makes one image serve
+#  either backend:
+#
+#      java profile     BACKEND_ORIGIN=http://server:8080
+#      dotnet profile   BACKEND_ORIGIN=http://server-dotnet:8080
+#
+#  It is a runtime value, not a build argument, so switching backends is a
+#  container restart rather than a rebuild of the JavaScript bundle.
+# ─────────────────────────────────────────────────────────────────────────────
+
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # The invoice PDF and the rate-card workbook both travel through here.
+    client_max_body_size 10m;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    # ── The SPA ──────────────────────────────────────────────────────────────
+    #
+    # try_files with an index.html fallback, because the app decides what to
+    # render from window.location.pathname - /oauth-success is a real URL the
+    # browser is redirected to by Google, and without this it would 404 before
+    # any JavaScript ran.
+    #
+    # Declared FIRST but matched LAST: nginx tries prefix locations longest
+    # first, so /api/... below always wins over this. That ordering is what
+    # stops an API call being answered with the SPA shell - the exact failure
+    # `serve -s dist` produces, where a 200 OK full of HTML looks like a
+    # parsing bug rather than a routing one.
+    location / {
+        try_files $uri $uri/ /index.html;
+
+        # index.html must never be cached or a deploy leaves browsers holding
+        # a document that references hashed asset files which no longer exist.
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    # Hashed filenames, so these are safe to cache indefinitely. A new build
+    # produces new names rather than new contents at the same name.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # ── The API ──────────────────────────────────────────────────────────────
+    location /api/ {
+        proxy_pass ${BACKEND_ORIGIN};
+        include /etc/nginx/proxy_common.conf;
+
+        # Generous, because an invoice PDF is rendered on demand and a cold
+        # OpenPDF call is not instant. The default 60s would cut it off.
+        proxy_read_timeout 120s;
+    }
+
+    location /health {
+        proxy_pass ${BACKEND_ORIGIN};
+        include /etc/nginx/proxy_common.conf;
+        access_log off;
+    }
+
+    # ── Google Sign-In ───────────────────────────────────────────────────────
+    #
+    # Both legs go through here so the whole flow lives on one origin. That is
+    # what lets the Google console hold a single redirect URI -
+    # http://localhost:5174/login/oauth2/code/google - which works unchanged
+    # whichever backend the profile started.
+    #
+    # The X-Forwarded-* headers below are load-bearing for this: Spring Security
+    # builds its redirect_uri from them, so without them it would advertise
+    # http://server:8080/... - an address that exists only inside the Docker
+    # network and that Google would reject as a mismatch.
+    location /oauth2/ {
+        proxy_pass ${BACKEND_ORIGIN};
+        include /etc/nginx/proxy_common.conf;
+    }
+
+    location /login/oauth2/ {
+        proxy_pass ${BACKEND_ORIGIN};
+        include /etc/nginx/proxy_common.conf;
+    }
+
+    # nginx's own liveness, answered without touching the backend, so the
+    # compose healthcheck reports on this container rather than that one.
+    location = /nginx-health {
+        return 200 "ok\n";
+        add_header Content-Type text/plain;
+        access_log off;
+    }
+}

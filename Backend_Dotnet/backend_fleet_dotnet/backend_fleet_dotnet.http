@@ -1,0 +1,58 @@
+@host = http://localhost:5100
+
+### Is this backend up?
+GET {{host}}/health
+
+### REQUIREMENT 11 - can this backend reach the Java one?
+GET {{host}}/api/proxy/health
+
+### Master data (public)
+GET {{host}}/api/states
+
+###
+GET {{host}}/api/cities/state/1
+
+###
+GET {{host}}/api/hubs/all
+
+### Customer registration
+POST {{host}}/api/customer/register
+Content-Type: application/json
+
+{
+  "firstName": "Test",
+  "lastName": "Customer",
+  "email": "test.customer@example.com",
+  "phone": "9876543210",
+  "password": "Password@123"
+}
+
+### Customer login - copy accessToken into @token below
+POST {{host}}/api/customer/login
+Content-Type: application/json
+
+{ "email": "test.customer@example.com", "password": "Password@123" }
+
+### Staff login (any seeded staff account)
+POST {{host}}/api/staff/login
+Content-Type: application/json
+
+{ "email": "yogesh.verma.visakhapatnam1@fleman.in", "password": "Password@123" }
+
+@token = PASTE_TOKEN_HERE
+
+### Profile
+GET {{host}}/api/customer/profile
+Authorization: Bearer {{token}}
+
+### Staff bookings - hub-scoped by default
+GET {{host}}/api/staff/bookings?page=0&size=10&status=PENDING&scope=PICKUP
+Authorization: Bearer {{token}}
+
+### Any booking by id - deliberately NOT hub-scoped
+GET {{host}}/api/staff/bookings/1
+Authorization: Bearer {{token}}
+
+### Forward an arbitrary GET to the Java service
+GET {{host}}/api/proxy/forward?path=/api/states
+Authorization: Bearer {{token}}
